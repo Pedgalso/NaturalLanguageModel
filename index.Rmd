@@ -10,6 +10,9 @@ hitheme     : tomorrow      #
 widgets     : []            # {mathjax, quiz, bootstrap}
 mode        : selfcontained # {standalone, draft}
 knit        : slidify::knit2slides
+github      :
+  user: Pedgalso
+  repo: NaturalLanguageModel
 ---
 
 <style type="text/css">
