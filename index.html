@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Natural Language Model</title>
+  <meta charset="utf-8">
+  <meta name="description" content="Natural Language Model">
+  <meta name="author" content="Pedro Solera">
+  <meta name="generator" content="slidify" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/default.css" media="all" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/phone.css" 
+    media="only screen and (max-device-width: 480px)" >
+  <link rel="stylesheet" href="libraries/frameworks/io2012/css/slidify.css" >
+  <link rel="stylesheet" href="libraries/highlighters/highlight.js/css/tomorrow.css" />
+  <base target="_blank"> <!-- This amazingness opens all links in a new tab. -->  <link rel=stylesheet href="./assets/css/ribbons.css"></link>
+
+  
+  <!-- Grab CDN jQuery, fall back to local if offline -->
+  <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.min.js"></script>
+  <script>window.jQuery || document.write('<script src="libraries/widgets/quiz/js/jquery.js"><\/script>')</script> 
+  <script data-main="libraries/frameworks/io2012/js/slides" 
+    src="libraries/frameworks/io2012/js/require-1.0.8.min.js">
+  </script>
+  
+  
+
+</head>
+<body style="opacity: 0">
+  <slides class="layout-widescreen">
+    
+    <!-- LOGO SLIDE -->
+        <slide class="title-slide segue nobackground">
+  
+  <hgroup class="auto-fadein">
+    <h1>Natural Language Model</h1>
+    <h2>Next word predictor</h2>
+    <p>Pedro Solera<br/>Data Science Capstone project - Coursera</p>
+  </hgroup>
+  
+  <article></article>  
+  
+</slide>
+    
+
+    <!-- SLIDES -->
+    <slide class="" id="slide-1" style="background:;">
+  
+  <article data-timings="">
+    <style type="text/css">
+
+strong {
+  font-weight: bold;
+}
+
+code.r{
+  font-size: 10px;
+}
+</style>
+
+<h2>Model information</h2>
+
+<h3>Model description</h3>
+
+<ol>
+<li>Prediction model based upon <strong>Ngrams</strong></li>
+<li>Observerd Ngrams are generated from <strong>twitter</strong>, <strong>blogs</strong> and <strong>news</strong></li>
+<li>Predicted Words are selected according to <strong>Maximum Likelihood Estimate</strong></li>
+<li><strong>Katz Back-Off Model</strong> is used to generate words not observed in the Ngrams</li>
+</ol>
+
+<h3>Model characteristics</h3>
+
+<p>Model improvement have been focused on:</p>
+
+<ol>
+<li>Increased performance time (response &lt;3s )</li>
+<li>Size of model (~11MB)<br></li>
+<li>Improved word prediction </li>
+</ol>
+
+  </article>
+  <!-- Presenter Notes -->
+  
+</slide>
+
+<slide class="" id="DataGeneration" style="background:;">
+  
+  <hgroup>
+    <h2>Data generation</h2>
+  </hgroup>
+  
+  <article data-timings="">
+    
+<div style='float:left;width:48%;' class='centered'>
+  <pre><code class="r"># twitter, news and blog are the provided raw data
+data.sample &lt;- c(sample(twitter, length(twitter) * 0.01),
+                 sample(news, length(news) * 0.02),
+                 sample(blog, length(blog) * 0.02))
+
+# Required functions to process raw data
+
+NLPBigramTokenizer &lt;- function(x) {
+  unlist(lapply(ngrams(words(x), 2), paste, collapse = &quot; &quot;),
+         use.names = FALSE)
+}
+
+NLPTrigramTokenizer &lt;- function(x) {
+  unlist(lapply(ngrams(words(x), 3), paste, collapse = &quot; &quot;),
+         use.names = FALSE)
+}
+
+Freq &lt;- function(x){
+  a&lt;-data.frame(x$i,x$j,x$v)
+  a&lt;-aggregate(x$v, by=list(x$i), sum)
+  colnames(a)&lt;-c(&quot;wordIndex&quot;, &quot;frequency&quot;)
+  a&lt;-a[order(a$frequency, decreasing = TRUE),]
+  a$words&lt;-x$dimnames$Terms[a$wordIndex]
+  a&lt;-a[,2:3]
+  return(a)}
+</code></pre>
+
+</div>
+<div style='float:right;width:48%;'>
+  <pre><code class="r">
+library(tm)
+
+corpus &lt;- VCorpus(VectorSource(data.sample))
+corpus &lt;- tm_map(corpus, removePunctuation)              
+corpus &lt;- tm_map(corpus, content_transformer(removeMostPunctuation))
+corpus &lt;- tm_map(corpus, removeNumbers)                     
+corpus &lt;- tm_map(corpus, tolower)                          
+corpus &lt;- tm_map(corpus, stripWhitespace) 
+# corpus &lt;- tm_map(corpus, removeWords, stopwords(&quot;en&quot;))
+corpus &lt;- tm_map(corpus, PlainTextDocument)
+
+library(ngram)
+
+# Onegram&lt;-TermDocumentMatrix(corpus)
+Bigram&lt;-TermDocumentMatrix(corpus, control=list(tokenize=NLPBigramTokenizer))
+Trigram&lt;-TermDocumentMatrix(corpus, control = list(tokenize=NLPTrigramTokenizer))
+
+# OnegramData&lt;-Freq(Onegram)
+BigramData &lt;-Freq(Bigram)
+TrigramData&lt;-Freq(Trigram)
+
+rownames(BigramData)&lt;-NULL
+rownames(TrigramData)&lt;-NULL
+</code></pre>
+
+</div>
+  </article>
+  <!-- Presenter Notes -->
+  
+</slide>
+
+<slide class="" id="modelCode" style="background:;">
+  
+  <hgroup>
+    <h2>Model code</h2>
+  </hgroup>
+  
+  <article data-timings="">
+    
+<div style='float:left;width:48%;' class='centered'>
+  <pre><code class="r">
+library(tm)
+library(ngram)
+
+## Pre processing the input text for model function
+prepro&lt;- function (x){
+
+# perform removepunctuation, removenumbers, tolower, stripWhitespace
+    a&lt;-sapply(x, function (x) preprocess(x ,case=&quot;lower&quot;,
+                                         remove.punct = TRUE,
+                                         remove.numbers = TRUE,
+                                         fix.spacing = TRUE))
+    attr(a, &quot;names&quot;) &lt;- NULL
+# perform bigram or onegram 
+    Ngram&lt;- ngram_asweka(a, min=2, max=2)
+
+    if (length(Ngram)==0) Ngram&lt;- ngram_asweka(a, min=1, max=1)
+return(Ngram)}
+
+# Function required in the model, it takes the last word of a Ngram
+lastword &lt;- function(x1){
+  a &lt;- ngram_asweka(x1, min=1, max=1)
+  a &lt;- a[length(a)] 
+return(a)}
+</code></pre>
+
+</div>
+<div style='float:right;width:48%;'>
+  <pre><code class="r">
+# Model function
+model &lt;- function (x, TrigramData, BigramData, gamma2= 0.5, gamma3=0.5) {
+
+# Last Ngram of the user input data
+  df&lt;-x[length(x)]
+# look up in trigram database for matches
+  s3&lt;- data.frame()
+  if (length(ngram_asweka(df, min=1, max=1))&gt;1){
+    s3&lt;-TrigramData[grep(paste0(&quot;^&quot;, df, &quot; &quot;), TrigramData$words),]
+# keep only top10 matches
+    if (dim(s3)[1] &gt;10) s3&lt;-s3[1:10, ]
+    p3 &lt;- (s3$frequency/ sum(s3$frequency))*gamma3
+    s3$probability &lt;- p3}
+# look up in bigram database for matches
+  lw&lt;-lastword(df)
+  s2&lt;-BigramData[grep(paste0(&quot;^&quot;, lw, &quot; &quot;), BigramData$words),]
+# keep only top10 
+  if (dim(s2)[1] &gt;10) s2&lt;-s2[1:10, ]
+    p2 &lt;- (s2$frequency/ sum(s2$frequency))*gamma2
+    s2$probability &lt;- p2
+# Join together bigram and trigram matches
+  if (nrow(s3)&gt;0) s&lt;-rbind(s3,s2)
+  else  s&lt;-s2
+# take last word from each bigram and trigram, these are the predicted words 
+  s$words&lt;-sapply(s$words, lastword)
+# drop frequency column 
+  s$frequency &lt;- NULL
+# join together predicted words from trigrams&amp;bigrams
+  s&lt;-aggregate(s$probability, by=list(s$word), sum)
+  s&lt;-s[order(s$x, decreasing=TRUE),]
+  names(s)&lt;-c(&quot;Words&quot;, &quot;Probability&quot;)
+
+return(s)}
+</code></pre>
+
+</div>
+  </article>
+  <!-- Presenter Notes -->
+  
+</slide>
+
+<slide class="" id="wayforward" style="background:;">
+  
+  <hgroup>
+    <h2>Way forward</h2>
+  </hgroup>
+  
+  <article data-timings="">
+    <p>To improve the model, the following activities are proposed:</p>
+
+<ol>
+<li>Model requires <strong>further validation</strong> (tunning up gamma2 and gamma3 variables) </li>
+<li><strong>Sentence context</strong> could added to the model by accounting for:
+
+<ul>
+<li>Markov Chains model, that can be used to set new probabilities distributions to the Ngrams</li>
+<li>Using Ngrams without <a href="https://en.wikipedia.org/wiki/Stop_words">stopwords</a></li>
+</ul></li>
+<li><strong>Alternative models</strong> could be developed and embedded to the present one, such as Bert or GPT-2. </li>
+</ol>
+
+  </article>
+  <!-- Presenter Notes -->
+  
+</slide>
+
+    <slide class="backdrop"></slide>
+  </slides>
+  <div class="pagination pagination-small" id='io2012-ptoc' style="display:none;">
+    <ul>
+      
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=1 title='NA'>
+         1
+      </a>
+    </li>
+    
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=2 title='Data generation'>
+         2
+      </a>
+    </li>
+    
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=3 title='Model code'>
+         3
+      </a>
+    </li>
+    
+    <li>
+      <a href="#" target="_self" rel='tooltip' 
+        data-slide=4 title='Way forward'>
+         4
+      </a>
+    </li>
+    
+    </ul>
+  </div>  <!--[if IE]>
+    <script 
+      src="http://ajax.googleapis.com/ajax/libs/chrome-frame/1/CFInstall.min.js">  
+    </script>
+    <script>CFInstall.check({mode: 'overlay'});</script>
+  <![endif]-->
+</body>
+  <!-- Load Javascripts for Widgets -->
+  
+  <!-- LOAD HIGHLIGHTER JS FILES -->
+  <script src="libraries/highlighters/highlight.js/highlight.pack.js"></script>
+  <script>hljs.initHighlightingOnLoad();</script>
+  <!-- DONE LOADING HIGHLIGHTER JS FILES -->
+   
+  </html>
